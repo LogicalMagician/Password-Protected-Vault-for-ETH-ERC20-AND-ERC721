@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 contract PasswordProtectedVault {
@@ -42,5 +44,13 @@ contract PasswordProtectedVault {
         require(amount_ > 0 && balance >= amount_, "Insufficient balance");
 
         require(IERC20(token_).transfer(msg.sender, amount_), "Transfer failed");
+    }
+
+    function withdrawERC721(address token_, uint256 tokenId_, bytes32 password_) public {
+        require(keccak256(abi.encodePacked(password_)) == _passwordHash, "Invalid password");
+
+        require(token_ != address(0), "Invalid token address");
+
+        IERC721(token_).transferFrom(address(this), msg.sender, tokenId_);
     }
 }
