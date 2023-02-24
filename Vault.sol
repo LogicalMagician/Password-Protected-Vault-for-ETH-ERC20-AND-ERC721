@@ -1,66 +1,46 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
 contract PasswordProtectedVault {
-    address payable owner;
-    string passwordHash;
-    
-    event Deposit(address indexed _from, uint256 _value);
-    event Withdraw(address indexed _to, uint256 _value);
-    
-    constructor(string memory _passwordHash) {
-        owner = payable(msg.sender);
-        passwordHash = _passwordHash;
+    using SafeMath for uint256;
+
+    address private _owner;
+    bytes32 private _passwordHash;
+
+    constructor(bytes32 passwordHash_) {
+        _owner = msg.sender;
+        _passwordHash = passwordHash_;
     }
-    
-    receive() external payable {
-        emit Deposit(msg.sender, msg.value);
+
+    modifier onlyOwner() {
+        require(msg.sender == _owner, "Not owner");
+        _;
     }
-    
-    function depositERC20(address _token, uint256 _amount) external {
-        require(IERC20(_token).transferFrom(msg.sender, address(this), _amount), "Transfer failed");
-        emit Deposit(msg.sender, _amount);
+
+    function setPassword(bytes32 passwordHash_) public onlyOwner {
+        _passwordHash = passwordHash_;
     }
-    
-    function depositERC721(address _token, uint256 _tokenId) external {
-        IERC721(_token).safeTransferFrom(msg.sender, address(this), _tokenId);
-        emit Deposit(msg.sender, 1);
-    }
-    
-    function withdrawETH(address payable _to, string memory _inputPassword) external {
-        require(keccak256(bytes(_inputPassword)) == keccak256(bytes(passwordHash)), "Invalid password");
+
+    function withdrawETH(bytes32 password_) public payable {
+        require(keccak256(abi.encodePacked(password_)) == _passwordHash, "Invalid password");
+
         uint256 balance = address(this).balance;
         require(balance > 0, "Insufficient balance");
-        _to.transfer(balance);
-        emit Withdraw(_to, balance);
-    }
-    
-    function withdrawERC20(address _token, address payable _to, uint256 _amount, string memory _inputPassword) external {
-        require(keccak256(bytes(_inputPassword)) == keccak256(bytes(passwordHash)), "Invalid password");
-        require(IERC20(_token).transfer(_to, _amount), "Transfer failed");
-        emit Withdraw(_to, _amount);
-    }
-    
-    function withdrawERC721(address _token, address payable _to, uint256 _tokenId, string memory _inputPassword) external {
-        require(keccak256(bytes(_inputPassword)) == keccak256(bytes(passwordHash)), "Invalid password");
-        IERC721(_token).safeTransferFrom(address(this), _to, _tokenId);
-        emit Withdraw(_to, 1);
-    }
-    
-    function changePassword(string memory _newPassword) external {
-        require(msg.sender == owner, "Only the owner can change the password");
-        passwordHash = keccak256(bytes(_newPassword));
-    }
-    
-    function getVaultBalance() public view returns (uint256) {
-        return address(this).balance;
-    }
-}
 
-interface IERC20 {
-    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
-    function transfer(address recipient, uint256 amount) external returns (bool);
-}
+        (bool success, ) = msg.sender.call{value: balance}("");
+        require(success, "Withdrawal failed");
+    }
 
-interface IERC721 {
-    function safeTransferFrom(address from, address to, uint256 tokenId) external;
+    function withdrawERC20(address token_, uint256 amount_, bytes32 password_) public {
+        require(keccak256(abi.encodePacked(password_)) == _passwordHash, "Invalid password");
+
+        require(token_ != address(0), "Invalid token address");
+
+        uint256 balance = IERC20(token_).balanceOf(address(this));
+        require(amount_ > 0 && balance >= amount_, "Insufficient balance");
+
+        require(IERC20(token_).transfer(msg.sender, amount_), "Transfer failed");
+    }
 }
